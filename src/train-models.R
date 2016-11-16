@@ -3,11 +3,12 @@
 
 # Load packages -----------------------------------------------------------
 library(doMC)
+library(IsolationForest)
 library(tidyverse)
 library(caret)
 
 # Register parallel backend -----------------------------------------------
-registerDoMC(5)
+registerDoMC(2)
 
 # Read data files ---------------------------------------------------------
 capture_files <- list.files("data", "\\.rds$", full.names = TRUE)
@@ -30,11 +31,18 @@ test_data  <- map2(labeled_data, partitions, ~ .x[-.y, ])
 # Fit models --------------------------------------------------------------
 ctrl <- trainControl("repeatedcv", 10, 10)
 
-models <- train_data %>% 
+rf_models <- train_data %>% 
   map(~ train(label ~ ., data = .x, trControl = ctrl, method = "rf"))
 
+iso_models <- train_data %>% 
+  map(~ select(.x, -label)) %>% 
+  map(IsolationTrees, ntree = 100, rowSamp = TRUE, nRowSamp = 256)
+
 # Evaluate model fits -----------------------------------------------------
-preds <- map2(models, test_data, predict)
-confusion_matrices <- map2(preds, test_data, ~ confusionMatrix(.x, .y[["label"]]))
+rf_pred <- map2(rf_models, test_data, predict)
+iso_pred <- map2(test_data, iso_models, AnomalyScore) %>% 
+  map(~ ifelse(.x$outF >= 0.5, 1, 0))
 
-
+eval_rf <- map2(rf_pred, test_data, ~ confusionMatrix(.x, .y[["label"]]))
+eval_if <- map(test_data, "label") %>% 
+  map2(iso_pred, table)
