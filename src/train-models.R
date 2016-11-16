@@ -34,18 +34,16 @@ ctrl <- trainControl("repeatedcv", 10, 10)
 rf_models <- train_data %>% 
   map(~ train(label ~ ., data = .x, trControl = ctrl, method = "rf"))
 
-if_models <- train_data %>% 
+if_models <- capture_data %>% 
   map(~ select(.x, -label)) %>% 
-  map(IsolationTrees, ntree = 1000, rowSamp = TRUE, nRowSamp = 256)
+  map(IsolationTrees, ntree = 100, rowSamp = TRUE, nRowSamp = 256)
 
 # Evaluate model fits -----------------------------------------------------
 rf_pred <- map2(rf_models, test_data, predict)
-if_pred <- map(test_data, ~ select(.x, -label)) %>% 
+if_pred <- map(capture_data, ~ select(.x, -label)) %>% 
   map2(if_models, AnomalyScore) %>% 
   map(~ ifelse(.x$outF >= 0.5, 1, 0))
 
 eval_rf <- map2(rf_pred, test_data, ~ confusionMatrix(.x, .y[["label"]]))
-eval_if <- map(test_data, "label") %>% 
+eval_if <- map(capture_data, "label") %>% 
   map2(if_pred, table)
-
-
